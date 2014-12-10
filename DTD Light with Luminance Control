@@ -218,14 +218,14 @@ def handleLuxChange(evt) {
     if (state.luxMeasurement < state.LuxSetPoint) {
     	state.sunPosition = "down"
         log.debug "Light level is below set point, setting sun position to down"
-        runIn(3, dimOrOffafterBright)	//3 second delay in not necessary . . .not sure how to just call this routine
+        dimOrOffafterBright()
 		
    	}
     else{
     	state.sunPosition = "up"  		//assumes that if lux is above threshold, sun must be up
-        						  		//could conflict with before sunset after sunrise offsets
-    									//could be a problem if lights shine on the light sensor
-        runIn(3, dimOrOffafterBright) 	//3 second delay in not necessary . . .not sure how to just call this routine
+        					//could conflict with before sunset after sunrise offsets
+    						//could be a problem if lights shine on the light sensor
+        dimOrOffafterBright()
     }
 }
 
