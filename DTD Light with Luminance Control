@@ -38,10 +38,10 @@ preferences {
 		input "DimLevelStr", "enum", title: "Dimmed or Dusk-to-Dawn Level %", required: true, 
         	options: ["5","10","15","20","30","50","75","100"], defaultValue: "20"
         
-        input "BrightLevelStr", "enum", title: "Motion-Sensed Level %", required: false, 
+        input "BrightLevelStr", "enum", title: "Motion-Sensed Level %", required: true, 
         	options: ["100","75","50"], defaultValue: "100"
         
-        input "DelayMinStr", "enum", title: "Bright Delay After Motion Stops, minutes", required: false, 
+        input "DelayMinStr", "enum", title: "Bright Delay After Motion Stops, minutes", required: true, 
         	options: ["1","3","5","10","15","30","60"], defaultValue: "5"
         	}
     section ("Turn on lights to dimmed state based on measured light also (optional)") {
