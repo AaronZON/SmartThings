@@ -1,5 +1,5 @@
 /**
- *  Dusk-to-Dawn Dimming Motion Light  - RC1 with luminance control
+ *  Dusk-to-Dawn Dimming Motion Light  - RC1 with luminance control - reworked 2014.12.12
  *
  *   Written by Aaron Herzon and based on code by Patrick Stuart and SmartThings 
  *   with contributions from the SmartThings community
@@ -16,7 +16,7 @@
  */
  
 definition(
-    name: "Dusk-to-Dawn Dimming Motion Light - RC1+luminance",
+    name: "Dusk-to-Dawn Dimming Motion Light with Optional Ambient Light Trigger",
     namespace: "AaronZON",
     author: "Aaron Herzon",
     description: "Turn lights on at dusk at a dimmed level, brighten when motion is sensed temporarily. Turn off at dawn.  Adjustable dim level, bright level, bright time, down offest, dusk offset. Dusk and dawn times based on location (either zip code or hub location)",
@@ -35,13 +35,13 @@ preferences {
         input "switches", "capability.switchLevel", title: "Dimmer Switches", required: false, multiple: true
 	}
     section ("Set Bright and Dim Levels and Bright Time") {
-		input "DimLevelStr", "enum", title: "Dimmed Level %", required: true, 
-        	options: ["10","15","20","30","50","75"], defaultValue: "20"
+		input "DimLevelStr", "enum", title: "Dimmed or Dusk-to-Dawn Level %", required: true, 
+        	options: ["5","10","15","20","30","50","75","100"], defaultValue: "20"
         
-        input "BrightLevelStr", "enum", title: "Bright Level %", required: true, 
+        input "BrightLevelStr", "enum", title: "Motion-Sensed Level %", required: false, 
         	options: ["100","75","50"], defaultValue: "100"
         
-        input "DelayMinStr", "enum", title: "Bright time, minutes", required: true, 
+        input "DelayMinStr", "enum", title: "Bright Delay After Motion Stops, minutes", required: false, 
         	options: ["1","3","5","10","15","30","60"], defaultValue: "5"
         	}
     section ("Turn on lights to dimmed state based on measured light also (optional)") {
@@ -77,7 +77,13 @@ def updated() {
 
 def initialize() {
 	state.DimLevel = DimLevelStr as Integer
+    if (state.DimLevel == 100) {
+    	state.DimLevel = 99
+    }
     state.BrightLevel = BrightLevelStr as Integer
+   	if (state.BrightLevel == 100) {
+    	state.BrightLevel = 99
+    }
     state.DelayMin = DelayMinStr as Integer
     state.LuxSetPoint = LuxSetPointStr as Integer
     
@@ -93,19 +99,9 @@ def initialize() {
     astroCheck()
 }
 
-def locationPositionChange(evt) {
-	log.trace "locationChange()"
-	astroCheck()
-}
-
-def sunriseSunsetTimeHandler(evt) {
-	log.trace "sunriseSunsetTimeHandler()"
-	astroCheck()
-}
-
 def initialSunPosition() {  
 	//Determine if sun is down at time of initializtion and run sunsetHandler() if so
-    
+    //Light meter is not evaluated initially, light level first evaluated at first luminance event
 	def s = getSunriseAndSunset(zipCode: zipCode, sunriseOffset: sunriseOffset, sunsetOffset: sunsetOffset)
 	def now = new Date()
     def riseTime = s.sunrise
@@ -113,6 +109,8 @@ def initialSunPosition() {
 	log.debug "riseTime: $riseTime"
     log.debug "setTime: $setTime"
     log.debug "Now: $now"
+    state.ambient = "light"  //initialize to "light"
+    state.sunPosition = "up" //initialize to "up"
 	
     	if(setTime.before(now)) {   //before midnight, after sunset
 	        sunsetHandler()
@@ -124,6 +122,16 @@ def initialSunPosition() {
             log.info "Sun is already down, run sunsetHandler"
         	}
       	} 
+}
+
+def locationPositionChange(evt) {
+	log.trace "locationChange()"
+	astroCheck()
+}
+
+def sunriseSunsetTimeHandler(evt) {
+	log.trace "sunriseSunsetTimeHandler()"
+	astroCheck()
 }
 
 def astroCheck() {
@@ -167,29 +175,63 @@ def astroCheck() {
 
 def sunriseHandler() {
 	log.info "Executing sunrise handler"
-    switches?.setLevel(0)
     state.sunPosition = "up"
+    if (LightMeter) {
+    	if (state.luxMeasurement < state.LuxSetPoint)
+        log.info "Sunrise occurred but its still dark so leave the lights on"
+        }
+    else {
+    	gotLight()
+        log.info "Light measurement option not selected, sun came up so it is light"
+    }
+    
 }
 
 def sunsetHandler() {
+	//Light meter not evaluated here.  Sunset has priority over light measurement in determining state.ambient
 	log.info "Executing sunset handler"
-	switches?.setLevel(30)  //starts at 30 (arbitrary) to make sure lights start (my LEDs won't start at below 20% but run fine)
-    state.sunPosition = "down"
-    runIn(3, dimOrOffafterBright)  //after initial light-off, runs handler to set to selected dim level after 3 seconds
+    state.sunPosition = "down"    
+    if (LightMeter) {
+    	if (state.ambient == "light"){
+        	gotDark()
+        }
+        else{
+        	log.info "Sun went down but it is already dark so do nothing"
+        }
+ 	}
+    else{
+    	gotDark()
+        log.info "Light measurement option not selected, sun when down so it is dark"
+    }
 }
 
+def gotDark() {
+	//Actions to do when it is determined it has transitioned from light to dark
+	log.info "It got dark according to sunset time (and offset) or light measurement"
+	switches?.setLevel(30)  //starts at 30 (arbitrary) to make sure lights start (my LEDs won't start at below 20% but run fine)
+    state.ambient = "dark"
+    runIn(3, modeDim)  //after initial light-off, runs handler to set to selected dim level after 3 seconds
+}
+
+def gotLight() {
+	//Actions to do when it is determined it has transitioned from dark to light
+	log.info "It got light according to sunrise time (and offset) and light measurement (if used)"
+	switches?.setLevel(0)  
+    state.ambient = "light"
+    unschedule(modeDim) //Cancels any motion-activated bright time 
+}
 
 def handleMotionEvent(evt) {
 	log.debug "Motion detected . . . ."
     
-    if (state.sunPosition == "down") {
+    if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)
         state.Level = state.BrightLevel
     	log.debug ". . . set the dimmers to level $state.BrightLevel"
     }
     else 
     {
-    	log.debug ". . . but sun is up, so do nothing"
+    	log.debug ". . . but its light, so do nothing"
         log.debug state
     }
 }
@@ -197,15 +239,16 @@ def handleMotionEvent(evt) {
 def handleEndMotionEvent(evt) {
 	log.debug "Motion stopped . . . ."
 
-    if (state.sunPosition == "down") {
+    if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)  //does nothing unless sun went down during active motion
         state.Level = state.BrightLevel
     	log.debug ". . . set the dimmers to level $state.BrightLevel if not already there"
-        runIn((state.DelayMin*60), dimOrOffafterBright)  //delay is number of minutes entered in preferences x 60 to get seconds
+        runIn((state.DelayMin*60), modeDim)  //delay is number of minutes entered in preferences x 60 to get seconds
+                                             //will be unscheduled if it gets light in the meantime
     }
     else 
     {
-    	log.debug ". . . but sun is up, so do nothing"
+    	log.debug ". . . but it light, so do nothing"
         log.debug state
     }
 }
@@ -215,40 +258,37 @@ def handleLuxChange(evt) {
 	log.debug "$evt.integerValue"
     state.luxMeasurement = evt.integerValue
     log.debug "Current lux is $state.luxMeasurement"
-    if (state.luxMeasurement < state.LuxSetPoint) {
-    	state.sunPosition = "down"
-        log.debug "Light level is below set point, setting sun position to down"
-        dimOrOffafterBright()
-		
-   	}
-    else{
-    	state.sunPosition = "up"  		//assumes that if lux is above threshold, sun must be up
-        					//could conflict with before sunset after sunrise offsets
-    						//could be a problem if lights shine on the light sensor
-        dimOrOffafterBright()
-    }
-}
-
-def dimOrOffafterBright() {   
-	//Handles the case where the sun comes up during bright time
     
-	log.debug "Bright delay is complete, decide to turn off or dim based on sun position and offsets"
-       
-    if (state.sunPosition == "down") {
-    	switches?.setLevel(state.DimLevel)
-        state.Level = state.DimLevel
-    	log.debug "Return to dimmed states since sun is down"
-        log.debug state
+    if (state.luxMeasurement < state.LuxSetPoint) {
+    	if (state.ambient == "light"){
+        	gotDark()
+    	}
     }
-    else 
-    {
-    	switches?.setLevel(0)
-        state.Level = 0
-        log.debug "Turned off lights since sun came up during bright time"
-        log.debug state
-    }
+    else{
+    	if (state.ambient == "dark" && state.sunPosition == "up")  //criteria for delaring 'light' is light measurement above setpoint AND sun is up
+        	gotLight()
+    	}
 }
 
+def modeDim() {   
+	//Sets light to dim stat
+    
+	log.debug "Set lights to dimmed state" 
+    
+    switches?.setLevel(state.DimLevel)
+    state.Level = state.DimLevel
+    log.debug state
+}
+
+def modeBright() {   
+	//Sets light to bright stat
+    
+	log.debug "Set lights to bright state" 
+    
+    switches?.setLevel(state.BrightLevel)
+    state.Level = state.BrightLevel
+    log.debug state
+}
 private getLabel() {
 	app.label ?: "SmartThings"
 }
@@ -258,5 +298,4 @@ private getSunriseOffset() {
 }
 
 private getSunsetOffset() {
-	sunsetOffsetValue ? (sunsetOffsetDir == "Before" ? "-$sunsetOffsetValue" : sunsetOffsetValue) : null
 }
