@@ -177,8 +177,12 @@ def sunriseHandler() {
 	log.info "Executing sunrise handler"
     state.sunPosition = "up"
     if (LightMeter) {
-    	if (state.luxMeasurement < state.LuxSetPoint)
+    	if (state.luxMeasurement < state.LuxSetPoint) {
         log.info "Sunrise occurred but its still dark so leave the lights on"
+        }
+        else {
+        	gotLight()
+       		}
         }
     else {
     	gotLight()
