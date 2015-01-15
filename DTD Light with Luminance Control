@@ -75,6 +75,8 @@ def updated() {
 }
 
 def initialize() {
+	log.debug "initialize()"
+    
 	state.DimLevel = DimLevelStr as Integer
     if (state.DimLevel == 100) {
     	state.DimLevel = 99
@@ -92,49 +94,47 @@ def initialize() {
 	
     initialSunPosition()  
 	
-    schedule(timeToday("12:13",location.timeZone),scheduleSunEvents)
+    
 }
 
 def initialSunPosition() {  
 	//Determine if sun is down at time of initializtion and run sunsetHandler() if so
     //Light meter is not evaluated initially, light level first evaluated at first luminance event
+    log.debug "initialSunPosition()"
 	def s = getSunriseAndSunset(zipCode: zipCode, sunriseOffset: sunriseOffset, sunsetOffset: sunsetOffset)
 	def now = new Date()
     def riseTime = s.sunrise
 	def setTime = s.sunset
-	log.debug "riseTime: $riseTime"
-    log.debug "setTime: $setTime"
-    log.debug "Now: $now"
-    state.ambient = "light"  //initialize to "light"
+	state.ambient = "light"  //initialize to "light"
     state.sunPosition = "up" //initialize to "up"
 	
-    	if(setTime.before(now)) {   //before midnight, after sunset
-	        sunsetHandler()
-            log.info "Sun is already down, run sunsetHandler"
-	    }
-	    else 
-        {	if (riseTime.after(now)) {  //after midnight, before sunset
-        	sunsetHandler()
-            log.info "Sun is already down, run sunsetHandler"
-        	}
-      	} 
-	scheduleSunEvents()
+    if(setTime.before(now) || riseTime.after(now)) {   //before midnight/after sunset or after midnight/before sunset
+	  	log.info "Sun is already down, run sunsetHandler"
+        sunsetHandler()
+    }
+    
+	scheduleSunEvents()													//setting initial rise/set 
+    
+    unschedule(scheduleSunEvents)
+    schedule(timeToday("12:13",location.timeZone),scheduleSunEvents) 	//subsequent evaluation of rise/set times
+    																	//at 12:13PM every day
 }
 
 def scheduleSunEvents() {
 	//query sunset and sunrise times with offsets applied, schedule handlers for sun events
     //this method based loosely on Sunrise/Sunset, astroCheck()
+    log.debug "scheduleSunEvents()"
     
 	def s = getSunriseAndSunset(zipCode: zipCode, sunriseOffset: sunriseOffset, sunsetOffset: sunsetOffset)
 	def now = new Date()
 	def riseTime = s.sunrise
 	def setTime = s.sunset
-	log.debug "scheduleSunEvents()"
+	
     log.debug "Today's sunrise (with offset applied): $riseTime"
 	log.debug "Today's sunset (with offset applied): $setTime"
     log.debug "Now: $now"
 		
-	unschedule("sunriseHandler")
+	unschedule(sunriseHandler)
 	
     if(riseTime.before(now)) {
     	schedule(riseTime.next(),sunriseHandler)
@@ -145,7 +145,7 @@ def scheduleSunEvents() {
         log.info "scheduling sunrise handler for $riseTime"
 		}
    
-	unschedule("sunsetHandler")
+	unschedule(sunsetHandler)
 
 	if(setTime.before(now)) {
 	  	schedule(setTime.next(),sunsetHandler)
@@ -159,6 +159,7 @@ def scheduleSunEvents() {
 
 def sunriseHandler() {
 	log.info "sunriseHandler()"
+    
     state.sunPosition = "up"
     if (LightMeter) {
     	if (state.luxMeasurement < state.LuxSetPoint) {
@@ -178,6 +179,7 @@ def sunriseHandler() {
 def sunsetHandler() {
 	//Light meter not evaluated here.  Sunset has priority over light measurement in determining state.ambient
 	log.info "sunsetHandler()"
+    
     state.sunPosition = "down"    
     if (LightMeter) {
     	if (state.ambient == "light"){
@@ -195,24 +197,28 @@ def sunsetHandler() {
 
 def gotDark() {
 	//Actions to do when it is determined it has transitioned from light to dark
-	log.info "It got dark according to sunset time (and offset) or light measurement"
-	switches?.setLevel(30)  //starts at 30 (arbitrary) to make sure lights start (my LEDs won't start at below 20% but run fine)
+	log.info "gotDark() It got dark according to sunset time (and offset) or light measurement"
+	
+    switches?.setLevel(30)  //starts at 30 (arbitrary) to make sure lights start (my LEDs won't start at below 20% but run fine)
     state.ambient = "dark"
-    //runIn(3, modeDim)  //this was unreliable, added runOnce below to address this
+    
+    unschedule(modeDim)
     def fireTime = new Date(new Date().time + 3000) //creates date object 3 seconds in the future
     runOnce(fireTime,modeDim)  //after initial light-off, runs handler to set to selected dim level after 3 seconds
 }
 
 def gotLight() {
 	//Actions to do when it is determined it has transitioned from dark to light
-	log.info "It got light according to sunrise time (and offset) and light measurement (if used)"
-	switches?.setLevel(0)  
+	log.info "gotLight() It got light according to sunrise time (and offset) and light measurement (if used)"
+	
+    switches?.setLevel(0)  
     state.ambient = "light"
     unschedule(modeDim) //Cancels any motion-activated bright time 
 }
 
 def handleMotionEvent(evt) {
-	log.debug "Motion detected . . . ."
+	log.debug "handleMotionEvent()"
+    log.debut "Motion detected . . . ."
     
     if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)
@@ -227,12 +233,15 @@ def handleMotionEvent(evt) {
 }
 
 def handleEndMotionEvent(evt) {
-	log.debug "Motion stopped . . . ."
+	log.debug "handleEndMotionEvent()"
+    log.debug "Motion stopped . . . ."
 
     if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)  //does nothing unless sun went down during active motion
         state.Level = state.BrightLevel
     	log.debug ". . . set the dimmers to level $state.BrightLevel if not already there"
+        
+        unschedule(modeDim)
         runIn((state.DelayMin*60), modeDim)  //delay is number of minutes entered in preferences x 60 to get seconds
                                              //will be unscheduled if it gets light in the meantime
     }
@@ -245,7 +254,9 @@ def handleEndMotionEvent(evt) {
 
 def handleLuxChange(evt) {
 
-	log.debug "$evt.integerValue"
+	log.debug "handleLuxChange()"
+    log.debug "$evt.integerValue"
+    
     state.luxMeasurement = evt.integerValue
     log.debug "Current lux is $state.luxMeasurement"
     
