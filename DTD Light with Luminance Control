@@ -218,7 +218,7 @@ def gotLight() {
 
 def handleMotionEvent(evt) {
 	log.debug "handleMotionEvent()"
-    log.debut "Motion detected . . . ."
+    log.debug "Motion detected . . . ."
     
     if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)
