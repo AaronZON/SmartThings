@@ -1,5 +1,5 @@
 /**
- *  Dusk-to-Dawn Dimming Motion Light  - RC1 with luminance control - reworked 2015.1.14
+ *  Dusk-to-Dawn Dimming Motion Light with luminance control - Last revised 1/26/15
  *
  *   Written by Aaron Herzon and based on code by Patrick Stuart and SmartThings 
  *   with contributions from the SmartThings community
@@ -53,12 +53,13 @@ preferences {
 		input "zipCode", "text", title: "Enter 5-digit ZIP code", required: false
 	}
     section ("Sunrise offset (optional)...") {
-		input "sunriseOffsetValue", "text", title: "Offset amount in the format HH:MM", required: false
-		input "sunriseOffsetDir", "enum", title: "Before or After", required: false, options: ["Before","After"]
+		input "sunriseOffsetStr", "enum", title: "Offset in minutes (use negative for before)", required: false,
+        	options: ["-120", "-60", "-30", "-15", "-5", "5", "15", "30", "60", "120"]
+		
 	}
 	section ("Sunset offset (optional)...") {
-		input "sunsetOffsetValue", "text", title: "Offset amount in the format HH:MM", required: false
-		input "sunsetOffsetDir", "enum", title: "Before or After", required: false, options: ["Before","After"]
+		input "sunsetOffsetStr", "enum", title: "Offset in minutes (use negative for before)", required: false,
+        	options: ["-120", "-60", "-30", "-15", "-5", "5", "15", "30", "60", "120"]
 	}
 }
 def installed() {
@@ -88,6 +89,24 @@ def initialize() {
     state.DelayMin = DelayMinStr as Integer
     state.LuxSetPoint = LuxSetPointStr as Integer
     
+    if(sunriseOffsetStr){
+    	state.sunriseOffset = sunriseOffsetStr as Integer
+        log.debug "value of sunriseOffset is $state.sunriseOffset minutes, set by user"
+        }
+    else{
+    	state.sunriseOffset = 1
+        log.debug "value of sunriseOffset is $state.sunriseOffset minute, arbitrary offset to avoid peak"
+    }
+    
+    if(sunsetOffsetStr){
+    	state.sunsetOffset = sunsetOffsetStr as Integer
+        log.debug "value of sunsetOffset is $state.sunsetOffset minutes, set by user"
+        }
+    else{
+    	state.sunsetOffset = -1
+        log.debug "value of sunsetOffset is $state.sunsetOffset minute, arbitrary offset to avoid peak"
+    }
+    
     subscribe(motions, "motion.active", handleMotionEvent)
     subscribe(motions, "motion.inactive", handleEndMotionEvent)
     subscribe(LightMeter, "illuminance", handleLuxChange)
@@ -101,7 +120,7 @@ def initialSunPosition() {
 	//Determine if sun is down at time of initializtion and run sunsetHandler() if so
     //Light meter is not evaluated initially, light level first evaluated at first luminance event
     log.debug "initialSunPosition()"
-	def s = getSunriseAndSunset(zipCode: zipCode, sunriseOffset: sunriseOffset, sunsetOffset: sunsetOffset)
+	def s = getSunriseAndSunset(zipCode: zipCode, sunriseOffset: state.sunriseOffset, sunsetOffset: state.sunsetOffset)
 	def now = new Date()
     def riseTime = s.sunrise
 	def setTime = s.sunset
@@ -125,7 +144,7 @@ def scheduleSunEvents() {
     //this method based loosely on Sunrise/Sunset, astroCheck()
     log.debug "scheduleSunEvents()"
     
-	def s = getSunriseAndSunset(zipCode: zipCode, sunriseOffset: sunriseOffset, sunsetOffset: sunsetOffset)
+	def s = getSunriseAndSunset(zipCode: zipCode, sunriseOffset: state.sunriseOffset, sunsetOffset: state.sunsetOffset)
 	def now = new Date()
 	def riseTime = s.sunrise
 	def setTime = s.sunset
@@ -217,8 +236,7 @@ def gotLight() {
 }
 
 def handleMotionEvent(evt) {
-	log.debug "handleMotionEvent()"
-    log.debug "Motion detected . . . ."
+	log.debug "handleMotionEvent() Motion detected . . . ."
     
     if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)
@@ -228,13 +246,11 @@ def handleMotionEvent(evt) {
     else 
     {
     	log.debug ". . . but its light, so do nothing"
-        log.debug state
     }
 }
 
 def handleEndMotionEvent(evt) {
-	log.debug "handleEndMotionEvent()"
-    log.debug "Motion stopped . . . ."
+	log.debug "handleEndMotionEvent() Motion stopped . . . ."
 
     if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)  //does nothing unless sun went down during active motion
@@ -248,14 +264,13 @@ def handleEndMotionEvent(evt) {
     else 
     {
     	log.debug ". . . but it light, so do nothing"
-        log.debug state
     }
 }
 
 def handleLuxChange(evt) {
+	//evalute light meter reading
 
 	log.debug "handleLuxChange()"
-    log.debug "$evt.integerValue"
     
     state.luxMeasurement = evt.integerValue
     log.debug "Current lux is $state.luxMeasurement"
@@ -274,30 +289,20 @@ def handleLuxChange(evt) {
 def modeDim() {   
 	//Sets light to dim stat
     
-	log.debug "Set lights to dimmed state" 
+	log.debug "modeDim()  Set lights to dimmed state" 
     
     switches?.setLevel(state.DimLevel)
     state.Level = state.DimLevel
-    log.debug state
 }
 
 def modeBright() {   
 	//Sets light to bright stat
     
-	log.debug "Set lights to bright state" 
+	log.debug "modeBright()  Set lights to bright state" 
     
     switches?.setLevel(state.BrightLevel)
     state.Level = state.BrightLevel
-    log.debug state
 }
 private getLabel() {
 	app.label ?: "SmartThings"
-}
-
-private getSunriseOffset() {
-	sunriseOffsetValue ? (sunriseOffsetDir == "Before" ? "-$sunriseOffsetValue" : sunriseOffsetValue) : null
-}
-
-private getSunsetOffset() {
-	sunsetOffsetValue ? (sunsetOffsetDir == "Before" ? "-$sunsetOffsetValue" : sunsetOffsetValue) : null
 }
