@@ -241,6 +241,7 @@ def handleMotionEvent(evt) {
     if (state.ambient == "dark") {
     	switches?.setLevel(state.BrightLevel)
         state.Level = state.BrightLevel
+        unschedule(modeDim)   //in case motion is sensed during delay before scheduled modeDim() call
     	log.debug ". . . set the dimmers to level $state.BrightLevel"
     }
     else 
@@ -257,7 +258,6 @@ def handleEndMotionEvent(evt) {
         state.Level = state.BrightLevel
     	log.debug ". . . set the dimmers to level $state.BrightLevel if not already there"
         
-        unschedule(modeDim)
         runIn((state.DelayMin*60), modeDim)  //delay is number of minutes entered in preferences x 60 to get seconds
                                              //will be unscheduled if it gets light in the meantime
     }
