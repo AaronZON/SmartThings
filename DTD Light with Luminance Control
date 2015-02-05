@@ -36,7 +36,7 @@ preferences {
 	}
     section ("Set Bright and Dim Levels and Bright Time") {
 		input "DimLevelStr", "enum", title: "Dimmed or Dusk-to-Dawn Level %", required: true, 
-        	options: ["5","10","15","20","30","50","75","100"], defaultValue: "20"
+        	options: ["0","5","10","15","20","30","50","75","100"], defaultValue: "20"
         
         input "BrightLevelStr", "enum", title: "Motion-Sensed Level %", required: true, 
         	options: ["100","75","50"], defaultValue: "100"
