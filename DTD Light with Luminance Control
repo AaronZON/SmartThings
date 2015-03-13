@@ -1,5 +1,5 @@
 /**
- *  Dusk-to-Dawn Dimming Motion Light with luminance control - Last revised 1/26/15
+ *  Dusk-to-Dawn Dimming Motion Light with luminance control - Last revised 3/12/15
  *
  *   Written by Aaron Herzon and based on code by Patrick Stuart and SmartThings 
  *   with contributions from the SmartThings community
@@ -155,25 +155,13 @@ def scheduleSunEvents() {
 		
 	unschedule(sunriseHandler)
 	
-    if(riseTime.before(now)) {
-    	schedule(riseTime.next(),sunriseHandler)
-        log.info "scheduling sunrise handler for ${riseTime.next()}"
-        }
-    else { 
-		schedule(state.riseTime, sunriseHandler)
-        log.info "scheduling sunrise handler for $riseTime"
-		}
+   	schedule(riseTime, sunriseHandler)
+	log.info "scheduling sunrise handler for $riseTime.timeString  UTC"
    
 	unschedule(sunsetHandler)
 
-	if(setTime.before(now)) {
-	  	schedule(setTime.next(),sunsetHandler)
-        log.info "scheduling sunset handler for ${setTime.next()}"
-        }
-	else {
-    	schedule(setTime,sunsetHandler)
-        log.info "scheduling sunset handler for $setTime"
-    	}
+    schedule(setTime,sunsetHandler)
+	log.info "scheduling sunset handler for $setTime.timeString  UTC"
 }
 
 def sunriseHandler() {
